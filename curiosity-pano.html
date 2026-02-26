@@ -1,21 +1,23 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- 
-        VERSIONE 2.7
-        - Aggiunta crocetta bianca (crosshair) al centro
-        - La crocetta è HTML, quindi esclusa dal salvataggio del crop
-        - Resize simmetrico e navigazione con cache mantenuti
+    <!--
+        VERSION 2.9
+        - "Grab Image" Panning Mode (Inverted camera rotation)
+        - Corrected Compass Labels spacing (N, S, E, W)
+        - Symmetrical Resizable Crop Frame
+        - English Interface with Tooltips
     -->
-    <title>360 Viewer v2.7 - Crosshair Center</title>
+    <title>360 Viewer v2.9 - "Grab Image" Mode</title>
     <script src="babylon.js"></script>
     <style>
         body, html { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: #000; }
-        #renderCanvas { width: 100%; height: 100%; touch-action: none; }
-        
-        /* Barra dei comandi */
+        #renderCanvas { width: 100%; height: 100%; touch-action: none; cursor: grab; }
+        #renderCanvas:active { cursor: grabbing; }
+
+        /* Top Navigation Bar */
         #ui {
             position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
             z-index: 100; display: flex; align-items: center; gap: 15px;
@@ -27,23 +29,22 @@
         .browser-container { display: flex; align-items: center; gap: 8px; border-right: 1px solid #555; padding-right: 15px; }
         #filenameDisplay { font-size: 13px; font-weight: bold; color: #f1c40f; min-width: 150px; text-align: center; }
         #cacheStatus { font-size: 9px; color: #aaa; position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); }
+
         .nav-btn { background: #d35400; color: white; border: none; padding: 4px 12px; cursor: pointer; font-weight: bold; border-radius: 15px; }
         .nav-btn:hover { background: #e67e22; }
+
+        .control-group { display: flex; align-items: center; gap: 12px; font-size: 12px; }
+        .control-group label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
         #saveBtn { background: #27ae60; color: white; border: none; padding: 4px 12px; cursor: pointer; font-weight: bold; border-radius: 15px; }
 
-        /* Crocetta di puntamento centrale */
+        /* Center Crosshair */
         #crosshair {
-            position: absolute; top: 50%; left: 50%;
-            width: 20px; height: 20px;
-            transform: translate(-50%, -50%);
-            pointer-events: none; /* Indispensabile per cliccare attraverso */
-            z-index: 5;
+            position: absolute; top: 50%; left: 50%; width: 20px; height: 20px;
+            transform: translate(-50%, -50%); pointer-events: none; z-index: 5;
         }
-        #crosshair::before, #crosshair::after {
-            content: ''; position: absolute; background: rgba(255,255,255,0.8);
-        }
-        #crosshair::before { top: 0; left: 50%; width: 2px; height: 100%; transform: translateX(-50%); } /* Linea verticale */
-        #crosshair::after { top: 50%; left: 0; width: 100%; height: 2px; transform: translateY(-50%); } /* Linea orizzontale */
+        #crosshair::before, #crosshair::after { content: ''; position: absolute; background: rgba(255,255,255,0.8); }
+        #crosshair::before { top: 0; left: 50%; width: 2px; height: 100%; transform: translateX(-50%); }
+        #crosshair::after { top: 50%; left: 0; width: 100%; height: 2px; transform: translateY(-50%); }
 
         /* Crop Frame */
         #cropFrame {
@@ -57,14 +58,21 @@
         .handle.se { bottom: -8px; right: -8px; cursor: nwse-resize; }
         .handle.sw { bottom: -8px; left: -8px; cursor: nesw-resize; }
 
-        /* Strumenti */
+        /* Gauges */
         #pitch-ui { position: absolute; bottom: 160px; right: 30px; width: 60px; height: 120px; z-index: 10; background: rgba(0,0,0,0.5); border-radius: 0 120px 120px 0; border: 2px solid #3498db; border-left: none; }
         .pitch-scale { position: absolute; right: -35px; height: 100%; width: 40px; display: flex; flex-direction: column; justify-content: space-between; font-size: 10px; color: #3498db; font-weight: bold; padding: 2px 0; }
         #pitch-arrow-wrapper { position: absolute; top: 50%; left: 0; width: 55px; height: 2px; transform-origin: left center; }
         #pitch-needle { position: absolute; right: 0; top: -5px; width: 0; height: 0; border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-left: 15px solid #f1c40f; }
+
+        /* FIXED COMPASS LABELS */
         #compass-ui { position: absolute; bottom: 30px; right: 30px; width: 110px; height: 110px; z-index: 10; background: rgba(0,0,0,0.5); border-radius: 50%; border: 2px solid #fff; }
-        .compass-label { position: absolute; width: 100%; text-align: center; font-weight: bold; color: white; font-size: 12px; height: 100%; }
-        .arrow-wrapper-round { position: absolute; width: 100%; height: 100%; }
+        .compass-label { position: absolute; font-weight: bold; color: white; font-size: 14px; }
+        .n { top: 5px; left: 50%; transform: translateX(-50%); }
+        .s { bottom: 5px; left: 50%; transform: translateX(-50%); color: #ff4757; }
+        .e { right: 8px; top: 50%; transform: translateY(-50%); }
+        .w { left: 8px; top: 50%; transform: translateY(-50%); }
+
+        .arrow-wrapper-round { position: absolute; width: 100%; height: 100%; pointer-events: none; }
         .needle-round { position: absolute; top: 15%; left: 50%; width: 4px; height: 35%; background: #f1c40f; transform: translateX(-50%); clip-path: polygon(50% 0%, 0% 100%, 100% 100%); }
     </style>
 </head>
@@ -72,32 +80,37 @@
 
     <div id="ui">
         <div class="browser-container">
-            <button class="nav-btn" id="reloadBtn">🔄</button>
-            <button class="nav-btn" id="prevBtn">&lt;</button>
+            <button class="nav-btn" id="reloadBtn" title="Force Reload (Bypass cache)">🔄</button>
+            <button class="nav-btn" id="prevBtn" title="Previous Image">&lt;</button>
             <div style="position: relative;">
-                <span id="filenameDisplay">...</span>
+                <span id="filenameDisplay">Initializing...</span>
                 <span id="cacheStatus"></span>
             </div>
-            <button class="nav-btn" id="nextBtn">&gt;</button>
+            <button class="nav-btn" id="nextBtn" title="Next Image">&gt;</button>
         </div>
         <div class="control-group">
-            <label><input type="checkbox" id="showHorizon"> Orizzonte</label>
-            <label><input type="checkbox" id="showGrid"> Griglia</label>
-            <label><input type="checkbox" id="showCrop"> Crop</label>
-            <button id="saveBtn">💾 Salva</button>
+            <label title="Toggle red horizon line">
+                <input type="checkbox" id="showHorizon"> Horizon
+            </label>
+            <label title="Toggle spherical grid and coordinate labels">
+                <input type="checkbox" id="showGrid"> Grid
+            </label>
+            <label title="Toggle resizable crop frame">
+                <input type="checkbox" id="showCrop"> Crop
+            </label>
+            <button id="saveBtn" title="Download current crop area">💾 Save</button>
         </div>
     </div>
 
-    <!-- Crocetta di mira centrale (solo visiva) -->
+    <!-- Center targets -->
     <div id="crosshair"></div>
 
-    <!-- Riquadro di Crop -->
     <div id="cropFrame">
         <div class="handle nw"></div><div class="handle ne"></div>
         <div class="handle sw"></div><div class="handle se"></div>
     </div>
 
-    <!-- Indicatori Pitch & Compass -->
+    <!-- Orientation Gauges -->
     <div id="pitch-ui">
         <div class="pitch-scale"><span>+90°</span><span>0°</span><span>-90°</span></div>
         <div id="pitch-arrow-wrapper"><div id="pitch-needle"></div></div>
@@ -111,7 +124,7 @@
     <canvas id="renderCanvas"></canvas>
 
     <script>
-        /** CONFIGURAZIONE **/
+        /** CONFIGURATION **/
         let CROP_WIDTH = 800;
         let CROP_HEIGHT = 600;
         const COMPASS_OFFSET_DEGREES = 90;
@@ -139,7 +152,7 @@
         }
         updateCropUI();
 
-        /** RESIZE SIMMETRICO **/
+        /** SYMMETRICAL RESIZE LOGIC **/
         let isResizing = false;
         document.querySelectorAll('.handle').forEach(h => {
             h.addEventListener('mousedown', e => { isResizing = true; e.preventDefault(); e.stopPropagation(); });
@@ -154,13 +167,23 @@
 
         const createScene = function () {
             const scene = new BABYLON.Scene(engine);
+            // Default Radius = 1 for internally viewed sphere
             const camera = new BABYLON.ArcRotateCamera("Camera", -Math.PI/2, Math.PI/2, 1, BABYLON.Vector3.Zero(), scene);
             camera.attachControl(canvas, false);
-            camera.inputs.remove(camera.inputs.attached.mousewheel); 
+
+            // "GRAB IMAGE" MODE: Inverting angular sensibility
+            // When user drags left, camera rotates left (which moves the image right)
+            // We set negative values to reverse default behavior
+            camera.angularSensibilityX = -1000;
+            camera.angularSensibilityY = -1000;
+
+            // FOV ZOOM LOGIC
+            camera.inputs.remove(camera.inputs.attached.mousewheel);
             canvas.addEventListener("wheel", e => {
                 e.preventDefault();
                 camera.fov = Math.max(0.1, Math.min(1.2, camera.fov + (e.deltaY > 0 ? 0.05 : -0.05)));
             }, { passive: false });
+
             createHelperMeshes(scene);
             fetchImageList(scene);
             return { scene, camera };
@@ -174,7 +197,8 @@
                 const doc = parser.parseFromString(html, 'text/html');
                 imageList = Array.from(doc.querySelectorAll('a')).map(a => a.getAttribute('href')).filter(h => h && h.toLowerCase().endsWith('.jpg'));
                 if (imageList.length > 0) { currentIndex = 0; loadSelectedImage(scene); }
-            } catch (e) { filenameDisplay.innerText = "Error"; }
+                else { filenameDisplay.innerText = "No images found"; }
+            } catch (e) { filenameDisplay.innerText = "Error loading list"; }
         }
 
         function loadSelectedImage(scene, force = false) {
@@ -189,7 +213,7 @@
                 const buster = force ? ("&t=" + Date.now()) : "";
                 targetTexture = new BABYLON.Texture(PROXY_BASE + encodeURIComponent(BASE_DIR_URL + filename) + buster, scene, false, false);
                 textureCache[filename] = targetTexture;
-                cacheStatus.innerText = force ? "Reloading..." : "Loading...";
+                cacheStatus.innerText = force ? "Reloading..." : "Downloading...";
                 targetTexture.onLoadObservable.add(() => { cacheStatus.innerText = "Ready"; });
             }
             if (!currentDome) currentDome = new BABYLON.PhotoDome("panorama", "", { resolution: 64, size: 1000 }, scene);
@@ -197,7 +221,6 @@
         }
 
         function saveCroppedImage() {
-            // CreateScreenshot cattura solo il canvas WebGL, ignorando tutti i div HTML (UI, CropFrame, Crosshair)
             BABYLON.Tools.CreateScreenshot(engine, scene.activeCamera, { precision: 1 }, (data) => {
                 const img = new Image();
                 img.onload = () => {
@@ -219,7 +242,7 @@
             });
         }
 
-        // --- HELPER GRIGLIA ---
+        // --- GRID SYSTEM ---
         function createTextLabel(text, position, color, scene, parent) {
             const plane = BABYLON.MeshBuilder.CreatePlane("l"+text, {size: 35}, scene);
             plane.position = position; plane.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL; plane.parent = parent;
@@ -262,8 +285,10 @@
         const { scene, camera } = createScene();
         engine.runRenderLoop(() => {
             scene.render();
+            // Compass Logic
             let az = (-camera.alpha - Math.PI / 2) * (180 / Math.PI) + 180;
             compassWrapper.style.transform = `rotate(${az + COMPASS_OFFSET_DEGREES}deg)`;
+            // Pitch Logic
             let el = -(Math.PI / 2 - camera.beta) * (180 / Math.PI);
             pitchWrapper.style.transform = `rotate(${-el + PITCH_OFFSET_DEGREES}deg)`;
         });

@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Fotogrammetria manuale</title>
+<style>
+body{margin:0;background:#222;color:#ddd;font-family:sans-serif}
+#modeBar{
+    display:none;
+    background:#f2d200;
+    color:#000;
+    padding:6px;
+    font-weight:bold;
+    text-align:center;
+}
+.controls{padding:10px}
+.viewer{display:flex;gap:10px;padding:10px}
+.image-container{
+    position:relative;
+    width:500px;
+    height:500px;
+    overflow:hidden;
+    border:1px solid #555;
+}
+.image-container.pan{cursor:grab}
+.image-container.pan.dragging{cursor:grabbing}
+img{
+    position:absolute;
+    top:0;left:0;
+    transform-origin:0 0;
+    user-select:none;
+    pointer-events:none;
+}
+
+
+
+.marker{
+    position:absolute;
+    transform:translate(-50%,-50%);
+    pointer-events:auto;
+}
+
+/* braccio verticale */
+.marker::before{
+    content:"";
+    position:absolute;
+    left:50%;
+    top:-50%;
+    width:2px;
+    height:200%;
+    background:currentColor;
+    transform:translateX(-50%);
+}
+
+/* braccio orizzontale */
+.marker::after{
+    content:"";
+    position:absolute;
+    top:50%;
+    left:-50%;
+    height:2px;
+    width:200%;
+    background:currentColor;
+    transform:translateY(-50%);
+}
+.marker{
+    position:absolute;
+    transform:translate(-50%,-50%);
+    pointer-events:auto;
+}
+
+/* braccio verticale */
+.marker::before{
+    content:"";
+    position:absolute;
+    left:50%;
+    top:-50%;
+    width:2px;
+    height:200%;
+    background:currentColor;
+    transform:translateX(-50%);
+}
+
+/* braccio orizzontale */
+.marker::after{
+    content:"";
+    position:absolute;
+    top:50%;
+    left:-50%;
+    height:2px;
+    width:200%;
+    background:currentColor;
+    transform:translateY(-50%);
+}
+
+
+.counter{margin-left:15px;font-weight:bold}
+</style>
+</head>
+
+<body>
+<h3>Image aligner</h3>
+Use spacebar to toggle between moving/editing modes:<br>
+- In <b>moving</b> mode you can pan and zoom the two images. <br>
+- In <b>editing</b> mode you can click on <strong>left</strong> image to add a marker<br>
+a marker will be added at center of <strong>right</strong> canvas, to be manually moved to the matching feature on the right image.<br>
+Once finished, you can save the json file, which you can reuse for future marking session, and save the marked left-right images<br>
+for further processing.<br>
+<div id="modeBar">MARKER EDITING MODE</div>
+<div class="controls"> 
+Left <input type="file" id="imgLeftInput"> 
+Right <input type="file" id="imgRightInput">
+
+Export shape:
+<select id="exportShape">
+<option value="cross">Cross</option>
+<option value="dot">Dot</option>
+</select>
+
+<span class="counter">Markers: <span id="markerCount">0</span></span>
+
+<br><br>
+<button id="saveJSON">Save JSON</button>
+<input type="file" id="loadJSON" accept="application/json">
+<button id="exportLeft">Save left image</button>
+<button id="exportRight">Save right image</button>
+
+
+</div><div class="viewer"> <div class="image-container" id="leftContainer"></div> 
+<div class="image-container" id="rightContainer"></div> 
+
+</div>
+
+
+<script>
+
+const COLORS = ["red","yellow","green","cyan","blue","white","orange"];
+let colorIndex = 0;
+
+
+function drawPlus(ctx, x, y, size, color){
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x-size, y);
+    ctx.lineTo(x+size, y);
+    ctx.moveTo(x, y-size);
+    ctx.lineTo(x, y+size);
+    ctx.stroke();
+}
+
+
+function drawX(ctx, x, y, size, color){
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x-size, y-size);
+    ctx.lineTo(x+size, y+size);
+    ctx.moveTo(x+size, y-size);
+    ctx.lineTo(x-size, y+size);
+    ctx.stroke();
+}
+
+function invertHomography(H){
+    const [a,b,c,d,e,f,g,h,i] = H;
+    const A = e*i - f*h;
+    const B = f*g - d*i;
+    const C = d*h - e*g;
+    const D = c*h - b*i;
+    const E = a*i - c*g;
+    const F = b*g - a*h;
+    const G = b*f - c*e;
+    const Hh = c*d - a*f;
+    const I = a*e - b*d;
+
+    const det = a*A + b*B + c*C;
+    if(Math.abs(det) < 1e-9) return null;
+
+    return [
+        A/det, D/det, G/det,
+        B/det, E/det, Hh/det,
+        C/det, F/det, I/det
+    ];
+}
+
+
+
+function computeHomography(src, dst){
+    // src, dst = array di {x,y}, almeno 4 punti
+
+    const A = [];
+    for(let i=0;i<4;i++){
+        const {x,y} = src[i];
+        const {x:X,y:Y} = dst[i];
+
+        A.push([ x, y, 1, 0, 0, 0, -x*X, -y*X ]);
+        A.push([ 0, 0, 0, x, y, 1, -x*Y, -y*Y ]);
+    }
+
+    // risolve Ah = b
+    const b = dst.flatMap(p=>[p.x, p.y]);
+
+    return solve8x8(A, b); // restituisce array h[8]
+}
+
+
+function solve8x8(A, b){
+    const M = A.map((r,i)=>r.concat([b[i]]));
+
+    for(let i=0;i<8;i++){
+        let max=i;
+        for(let j=i+1;j<8;j++)
+            if(Math.abs(M[j][i]) > Math.abs(M[max][i])) max=j;
+        [M[i],M[max]] = [M[max],M[i]];
+
+        const v = M[i][i];
+        for(let j=i;j<9;j++) M[i][j] /= v;
+
+        for(let j=0;j<8;j++){
+            if(j===i) continue;
+            const f = M[j][i];
+            for(let k=i;k<9;k++)
+                M[j][k] -= f*M[i][k];
+        }
+    }
+
+    return M.map(r=>r[8]);
+}
+
+
+function applyHomography(H, x, y){
+    const d = H[6]*x + H[7]*y + H[8];
+    return {
+        x: (H[0]*x + H[1]*y + H[2]) / d,
+        y: (H[3]*x + H[4]*y + H[5]) / d
+    };
+}
+
+
+/* =================== MODALITÀ =================== */
+let MODE="EDIT";
+document.addEventListener("keydown",e=>{
+    if(e.code==="Space"){
+        e.preventDefault();
+        MODE = MODE==="EDIT" ? "PAN" : "EDIT";
+        modeBar.style.display = MODE==="EDIT" ? "block":"none";
+        views.forEach(v=>v.container.classList.toggle("pan",MODE==="PAN"));
+    }
+});
+
+/* =================== IMAGE VIEW =================== */
+class ImageView{
+    constructor(container){
+        this.container = container;
+        this.img = null;
+        this.zoom = 1;
+        this.pan = {x:0,y:0};
+        this.dragging = false;
+        this.start = {x:0,y:0};
+
+        container.onmousedown = e=>{
+            if(MODE!=="PAN") return;
+            this.dragging = true;
+            this.start.x = e.clientX - this.pan.x;
+            this.start.y = e.clientY - this.pan.y;
+            container.classList.add("dragging");
+        };
+        
+
+      container.onwheel = e=>{
+          if(MODE!=="PAN") return;
+          e.preventDefault();
+
+          const factor = e.deltaY < 0 ? 1.1 : 0.9;
+          const oldZoom = this.zoom;
+          const newZoom = this.zoom * factor;
+
+          // centro del canvas (viewport)
+          const rect = this.container.getBoundingClientRect();
+          const cx = rect.width / 2;
+          const cy = rect.height / 2;
+
+          // coordinate immagine del centro PRIMA dello zoom
+          const ix = (cx - this.pan.x) / oldZoom;
+          const iy = (cy - this.pan.y) / oldZoom;
+
+          // aggiorna zoom
+          this.zoom = newZoom;
+
+          // nuovo pan per mantenere fisso il centro
+          this.pan.x = cx - ix * newZoom;
+          this.pan.y = cy - iy * newZoom;
+
+          this.render();
+      };
+      
+    
+document.addEventListener("mouseup", ()=>{
+    this.dragging = false;
+    this.container.classList.remove("dragging");
+});      
+
+    }
+
+    attachImage(file){
+        this.img = new Image();
+        this.img.onload = ()=>this.render();
+        this.img.src = URL.createObjectURL(file);
+        this.container.innerHTML="";
+        this.container.appendChild(this.img);
+        this.zoom = 1;
+        this.pan = {x:0,y:0};
+    }
+
+    screenToImage(x,y){
+        const r=this.container.getBoundingClientRect();
+        return {
+            x:(x-r.left-this.pan.x)/this.zoom,
+            y:(y-r.top -this.pan.y)/this.zoom
+        };
+    }
+
+    render(){
+        if(!this.img) return;
+        this.img.style.transform =
+            `translate(${this.pan.x}px,${this.pan.y}px) scale(${this.zoom})`;
+        pairs.forEach(p=>{
+            const m=p[this===views[0]?"L":"R"];
+            if(!m.el) return;
+            const size = 10 * this.zoom;
+
+            m.el.style.left = (m.x*this.zoom + this.pan.x) + "px";
+            m.el.style.top  = (m.y*this.zoom + this.pan.y) + "px";
+            m.el.style.width  = size + "px";
+            m.el.style.height = size + "px";
+
+        });
+    }
+
+    
+}
+
+document.addEventListener("mousemove",e=>{
+    views.forEach(v=>{
+        if(!v.dragging) return;
+        v.pan.x = e.clientX - v.start.x;
+        v.pan.y = e.clientY - v.start.y;
+        v.render();
+    });
+});
+
+
+
+
+/* =================== SETUP =================== */
+const leftView = new ImageView(leftContainer);
+const rightView = new ImageView(rightContainer);
+
+const views=[leftView,rightView];
+
+let pairs=[], undo=[], redo=[], idCounter=0;
+
+function updateCounter(){ markerCount.textContent=pairs.length }
+
+/* =================== MARKER =================== */
+function createMarker(view, pt, color, id){
+    const el = document.createElement("div");
+    el.className = "marker";
+    el.style.color = color;
+    //el.style.background = color;
+    view.container.appendChild(el);
+
+    const marker = { x: pt.x, y: pt.y, el, id };
+
+    let dragging = false;
+
+    el.onmousedown = e => {
+        if (MODE !== "EDIT") return;
+        e.stopPropagation();
+        dragging = true;
+    };
+    
+    el.onclick = e => e.stopPropagation();
+
+
+    document.addEventListener("mousemove", e => {
+        if (!dragging) return;
+        const p = view.screenToImage(e.clientX, e.clientY);
+        marker.x = p.x;
+        marker.y = p.y;
+        view.render();
+    });
+
+    document.addEventListener("mouseup", () => {
+        dragging = false;
+    });
+
+el.oncontextmenu = e => {
+    if (MODE !== "EDIT") return;
+    e.preventDefault();
+
+    if(!confirm("Cancellare questo marker?")) return;
+
+    const pair = pairs.find(p => p.id === id);
+    if (!pair) return;
+
+    pair.L.el.remove();
+    pair.R.el.remove();
+    pairs = pairs.filter(p => p.id !== id);
+    updateCounter();
+};
+
+
+    return marker;
+}
+
+leftContainer.onclick=e=>{
+    if(MODE!=="EDIT"||!leftView.img||!rightView.img) return;
+    const pt = leftView.screenToImage(e.clientX,e.clientY);
+const c = COLORS[colorIndex % COLORS.length];
+colorIndex++;
+
+    const id = idCounter++;
+
+// centro VISIBILE del canvas destro
+const rect = rightView.container.getBoundingClientRect();
+const cx = rect.left + rect.width  / 2;
+const cy = rect.top  + rect.height / 2;
+
+// convertito in coordinate immagine destra
+const ptRight = rightView.screenToImage(cx, cy);
+
+const pair = {
+    id, color: c,
+    L: createMarker(leftView, pt, c, id),
+    R: createMarker(rightView, ptRight, c, id)
+};
+
+
+    pairs.push(pair);
+    undo.push(pair); redo=[];
+    updateCounter();
+    views.forEach(v=>v.render());
+};
+
+/* =================== UNDO / REDO =================== */
+document.addEventListener("keydown",e=>{
+    if(e.ctrlKey&&e.key==="z"&&undo.length){
+        const p=undo.pop();
+        p.L.el.remove(); p.R.el.remove();
+        pairs=pairs.filter(x=>x.id!==p.id);
+        redo.push(p); updateCounter();
+    }
+    if(e.ctrlKey&&e.key==="y"&&redo.length){
+        const p=redo.pop();
+        p.L=createMarker(leftView,p.L,p.color,p.id);
+        p.R=createMarker(rightView,p.R,p.color,p.id);
+        pairs.push(p); undo.push(p); updateCounter();
+        views.forEach(v=>v.render());
+    }
+});
+
+/* =================== LOAD / SAVE =================== */
+saveJSON.onclick=()=>{
+    const data={
+        markers:pairs.map(p=>({
+            id:p.id,color:p.color,
+            left:{x:p.L.x,y:p.L.y},
+            right:{x:p.R.x,y:p.R.y}
+        }))
+    };
+    const b=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(b);
+const leftName  = imgLeftInput.files[0].name.replace(/\.[^/.]+$/, "");
+const rightName = imgRightInput.files[0].name.replace(/\.[^/.]+$/, "");
+
+a.download = leftName + "__" + rightName + "_markers.json";
+    a.click();
+};
+
+loadJSON.onchange=e=>{
+    const f=e.target.files[0]; if(!f) return;
+    const r=new FileReader();
+    r.onload=()=>{
+        pairs.forEach(p=>{p.L.el.remove();p.R.el.remove()});
+        pairs=[];
+        JSON.parse(r.result).markers.forEach(p=>{
+            p.L=createMarker(leftView,p.left,p.color,p.id);
+            p.R=createMarker(rightView,p.right,p.color,p.id);
+            pairs.push(p);
+            idCounter=Math.max(idCounter,p.id+1);
+        });
+        updateCounter();
+        views.forEach(v=>v.render());
+    };
+    r.readAsText(f);
+};
+
+function exportImage(view, side, filename){
+    if(!view.img) return;
+
+    const canvas = document.createElement("canvas");
+    canvas.width  = view.img.naturalWidth;
+    canvas.height = view.img.naturalHeight;
+
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(view.img, 0, 0);
+
+    pairs.forEach(p=>{
+        const m = side === "L" ? p.L : p.R;
+        if(!m) return;
+
+ctx.strokeStyle = p.color;
+ctx.fillStyle   = p.color;
+
+const shape = exportShape.value;
+
+if(shape === "cross"){
+    ctx.lineWidth = 1;
+
+    ctx.beginPath();
+    ctx.moveTo(m.x - 5, m.y);
+    ctx.lineTo(m.x + 5, m.y);
+    ctx.moveTo(m.x, m.y - 5);
+    ctx.lineTo(m.x, m.y + 5);
+    ctx.stroke();
+
+}else{ // pallino
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, 3, 0, Math.PI*2);
+    ctx.fill();
+}
+
+    });
+
+    const a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = filename;
+    a.click();
+}
+
+
+function markedName(file){
+    const name = file.name;
+    const dot = name.lastIndexOf(".");
+    if(dot === -1) return name + "_marked.png";
+    return name.slice(0, dot) + "_marked" + name.slice(dot);
+}
+
+exportLeft.onclick = () =>
+    exportImage(
+        leftView,
+        "L",
+        markedName(imgLeftInput.files[0])
+    );
+
+exportRight.onclick = () =>
+    exportImage(
+        rightView,
+        "R",
+        markedName(imgRightInput.files[0])
+    );
+
+
+/* =================== IMAGE LOAD =================== */
+imgLeftInput.onchange=e=>leftView.attachImage(e.target.files[0]);
+imgRightInput.onchange=e=>rightView.attachImage(e.target.files[0]);
+
+
+
+
+</script>
+
+</body>
+</html>
