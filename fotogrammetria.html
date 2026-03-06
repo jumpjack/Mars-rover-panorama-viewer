@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<title>Fotogrammetria manuale</title>
+<title>Images aligner</title>
 <style>
 body{margin:0;background:#222;color:#ddd;font-family:sans-serif}
 #modeBar{
@@ -100,36 +100,37 @@ img{
 
 <body>
 <h3>Image aligner</h3>
+<div class="controls">
+  Left <input type="file" id="imgLeftInput"> <br>
+  Right <input type="file" id="imgRightInput"><br>
+
+
+
+  <br>
+  <button id="saveJSON">Save JSON</button>
+  <button id="exportLeft">Save left image</button>
+  <button id="exportRight">Save right image</button><br>
+  Load markers:   <input type="file" id="loadJSON" accept="application/json">
+
+</div><div class="viewer"> <div class="image-container" id="leftContainer"></div> 
+<div class="image-container" id="rightContainer"></div>
+
+</div>
+<div id="modeBar">MARKER EDITING MODE</div>
+  Export shape:
+  <select id="exportShape">
+    <option value="cross">Cross</option>
+    <option value="dot">Dot</option>
+  </select>
+<span class="counter">Markers count: <span id="markerCount">0</span></span>
+<br>
 Use spacebar to toggle between moving/editing modes:<br>
 - In <b>moving</b> mode you can pan and zoom the two images. <br>
 - In <b>editing</b> mode you can click on <strong>left</strong> image to add a marker<br>
 a marker will be added at center of <strong>right</strong> canvas, to be manually moved to the matching feature on the right image.<br>
 Once finished, you can save the json file, which you can reuse for future marking session, and save the marked left-right images<br>
 for further processing.<br>
-<div id="modeBar">MARKER EDITING MODE</div>
-<div class="controls"> 
-Left <input type="file" id="imgLeftInput"> 
-Right <input type="file" id="imgRightInput">
 
-Export shape:
-<select id="exportShape">
-<option value="cross">Cross</option>
-<option value="dot">Dot</option>
-</select>
-
-<span class="counter">Markers: <span id="markerCount">0</span></span>
-
-<br><br>
-<button id="saveJSON">Save JSON</button>
-<input type="file" id="loadJSON" accept="application/json">
-<button id="exportLeft">Save left image</button>
-<button id="exportRight">Save right image</button>
-
-
-</div><div class="viewer"> <div class="image-container" id="leftContainer"></div> 
-<div class="image-container" id="rightContainer"></div> 
-
-</div>
 
 
 <script>
