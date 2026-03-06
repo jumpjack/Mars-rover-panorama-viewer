@@ -1,5 +1,9 @@
-# Mars-rover-panoarama-viewer
-View and manipulate Mars panoramas from MSL and MARS2020 rovers. Feed croppings to AI video generator to create a video with smooth transition between start and end frame.
+# Mars rover panoarama viewer
+<img width="1010" height="537" alt="image" src="https://github.com/user-attachments/assets/f757a021-e009-45c5-a5cd-410a6781354d" />
+
+View and manipulate Mars panoramas from MSL ("_Curiosity_") and MARS2020 ("_Perseverance_") rovers. Feed croppings to AI video generator to create a video with smooth transition between start and end frame.
+
+
 
 
 Source images for Curiosity: https://stevealbers.net/allsky/sites/curiosity/cyl_mosaics/
