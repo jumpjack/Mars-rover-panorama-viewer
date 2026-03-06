@@ -30,4 +30,7 @@ Notes:
  _Simulate camera motion from first position to second position,  move closer to horizon,  some features disappear under bottom edge of frame, keep consistency of color markers,  keep consistency of  terrain,  keep consistency of  rocks, don't add rocks, don't add anything, smooth transition, don't add dust devils, remove color markers, don't add rocks, don't add any object, all rocks are static, only camera moves,  don't add moving rocks, don't add rocks,  keep consistency of color markers, there are no moving rocks, don't add moving rocks, all rocks stick to terrain, keep consistency of all features,there are no moving rocks, don't add moving rocks_
 
  _**Note**: getting closer to horizon is easier for AI because it doesn't need to invent features entering the scene, it has just to move them away._
-  
+
+  ## Example video
+
+https://youtu.be/M4Bp1rgaGhQ
